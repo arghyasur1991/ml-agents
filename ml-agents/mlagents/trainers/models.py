@@ -1,8 +1,7 @@
 import logging
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.layers as c_layers
+import tensorflow.compat.v1 as tf
 
 logger = logging.getLogger("mlagents.trainers")
 
@@ -126,7 +125,7 @@ class LearningModel(object):
             for i in range(num_layers):
                 hidden = tf.layers.dense(hidden, h_size, activation=activation, reuse=reuse,
                                          name="hidden_{}".format(i),
-                                         kernel_initializer=c_layers.variance_scaling_initializer(
+                                         kernel_initializer=tf.initializers.variance_scaling(
                                              1.0))
         return hidden
 
@@ -147,7 +146,7 @@ class LearningModel(object):
                                      activation=tf.nn.elu, reuse=reuse, name="conv_1")
             conv2 = tf.layers.conv2d(conv1, 32, kernel_size=[4, 4], strides=[2, 2],
                                      activation=tf.nn.elu, reuse=reuse, name="conv_2")
-            hidden = c_layers.flatten(conv2)
+            hidden = tf.layers.flatten(conv2)
 
         with tf.variable_scope(scope + '/' + 'flat_encoding'):
             hidden_flat = self.create_vector_observation_encoder(hidden, h_size, activation,
@@ -239,8 +238,8 @@ class LearningModel(object):
         memory_in = tf.reshape(memory_in[:, :], [-1, m_size])
         _half_point = int(m_size / 2)
         with tf.variable_scope(name):
-            rnn_cell = tf.contrib.rnn.BasicLSTMCell(_half_point)
-            lstm_vector_in = tf.contrib.rnn.LSTMStateTuple(memory_in[:, :_half_point],
+            rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(_half_point)
+            lstm_vector_in = tf.nn.rnn_cell.LSTMStateTuple(memory_in[:, :_half_point],
                                                            memory_in[:, _half_point:])
             recurrent_output, lstm_state_out = tf.nn.dynamic_rnn(rnn_cell, lstm_input_state,
                                                                  initial_state=lstm_vector_in)
@@ -274,7 +273,7 @@ class LearningModel(object):
             hidden_value = hidden_streams[1]
 
         mu = tf.layers.dense(hidden_policy, self.act_size[0], activation=None,
-                             kernel_initializer=c_layers.variance_scaling_initializer(factor=0.01))
+                             kernel_initializer=tf.initializers.variance_scaling(scale=0.01))
 
         log_sigma_sq = tf.get_variable("log_sigma_squared", [self.act_size[0]], dtype=tf.float32,
                                        initializer=tf.zeros_initializer())
@@ -333,7 +332,7 @@ class LearningModel(object):
         policy_branches = []
         for size in self.act_size:
             policy_branches.append(tf.layers.dense(hidden, size, activation=None, use_bias=False,
-                                      kernel_initializer=c_layers.variance_scaling_initializer(factor=0.01)))
+                                      kernel_initializer=tf.initializers.variance_scaling(scale=0.01)))
 
         self.all_log_probs = tf.concat([branch for branch in policy_branches], axis=1, name="action_probs")
 

@@ -7,7 +7,7 @@ import os
 from collections import deque
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from mlagents.envs import AllBrainInfo, BrainInfo
 from mlagents.trainers.buffer import Buffer

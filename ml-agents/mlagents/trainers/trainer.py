@@ -1,7 +1,7 @@
 # # Unity ML-Agents Toolkit
 import logging
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import numpy as np
 
 from mlagents.envs import UnityException, AllBrainInfo, BrainInfo
@@ -36,6 +36,7 @@ class Trainer(object):
         self.stats = {}
         self.summary_writer = None
         self.policy = None
+        tf.disable_v2_behavior()
 
     def __str__(self):
         return '''{} Trainer'''.format(self.__class__)

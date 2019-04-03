@@ -6,7 +6,7 @@ import logging
 import os
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from mlagents.envs import AllBrainInfo
 from mlagents.trainers.bc.policy import BCPolicy

@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from mlagents.trainers import ActionInfo, UnityException
 from tensorflow.python.tools import freeze_graph

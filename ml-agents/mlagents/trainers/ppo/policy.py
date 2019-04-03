@@ -196,6 +196,8 @@ class PPOPolicy(Policy):
             feed_dict[self.model.prev_action] = brain_info.previous_vector_actions[idx].reshape(
                 [-1, len(self.model.act_size)])
         value_estimate = self.sess.run(self.model.value, feed_dict)
+        if not isinstance(value_estimate, float):
+            value_estimate = value_estimate[0][0]
         return value_estimate
 
     def get_last_reward(self):

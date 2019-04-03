@@ -12,7 +12,7 @@ if sys.platform.startswith('win'):
 from typing import *
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from mlagents.envs import AllBrainInfo, BrainInfo
 from mlagents.envs.exception import UnityEnvironmentException

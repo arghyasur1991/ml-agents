@@ -1,5 +1,4 @@
-import tensorflow as tf
-import tensorflow.contrib.layers as c_layers
+import tensorflow.compat.v1 as tf
 from mlagents.trainers.models import LearningModel
 
 
@@ -28,7 +27,7 @@ class BehavioralCloningModel(LearningModel):
                         size,
                         activation=None,
                         use_bias=False,
-                        kernel_initializer=c_layers.variance_scaling_initializer(factor=0.01)))
+                        kernel_initializer=tf.initializers.variance_scaling(scale=0.01)))
             self.action_probs = tf.concat(
                 [tf.nn.softmax(branch) for branch in policy_branches], axis=1, name="action_probs")
             self.action_masks = tf.placeholder(shape=[None, sum(self.act_size)], dtype=tf.float32, name="action_masks")
@@ -44,7 +43,7 @@ class BehavioralCloningModel(LearningModel):
                 tf.equal(tf.cast(tf.argmax(self.action_probs, axis=1), tf.int32), self.sample_action), tf.float32))
         else:
             self.policy = tf.layers.dense(hidden_reg, self.act_size[0], activation=None, use_bias=False, name='pre_action',
-                                          kernel_initializer=c_layers.variance_scaling_initializer(factor=0.01))
+                                          kernel_initializer=tf.initializers.variance_scaling(scale=0.01))
             self.clipped_sample_action = tf.clip_by_value(self.policy, -1, 1)
             self.sample_action = tf.identity(self.clipped_sample_action, name="action")
             self.true_action = tf.placeholder(shape=[None, self.act_size[0]], dtype=tf.float32, name="teacher_action")
