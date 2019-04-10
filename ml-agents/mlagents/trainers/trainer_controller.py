@@ -6,15 +6,14 @@ import os
 import logging
 import shutil
 import sys
-if sys.platform.startswith('win'):
-    import win32api
-    import win32con
 from typing import *
 
 import numpy as np
 import tensorflow.compat.v1 as tf
+from time import time
 
-from mlagents.envs import AllBrainInfo, BrainInfo
+from mlagents.envs import AllBrainInfo, BrainParameters
+from mlagents.envs.base_unity_environment import BaseUnityEnvironment
 from mlagents.envs.exception import UnityEnvironmentException
 from mlagents.trainers import Trainer, Policy
 from mlagents.trainers.ppo.trainer import PPOTrainer
@@ -24,10 +23,18 @@ from mlagents.trainers.meta_curriculum import MetaCurriculum
 
 
 class TrainerController(object):
-    def __init__(self, model_path: str, summaries_dir: str,
-                 run_id: str, save_freq: int, meta_curriculum: Optional[MetaCurriculum],
-                 load: bool, train: bool, keep_checkpoints: int, lesson: Optional[int],
-                 external_brains: Dict[str, BrainInfo], training_seed: int):
+    def __init__(self,
+                 model_path: str,
+                 summaries_dir: str,
+                 run_id: str,
+                 save_freq: int,
+                 meta_curriculum: Optional[MetaCurriculum],
+                 load: bool,
+                 train: bool,
+                 keep_checkpoints: int,
+                 lesson: Optional[int],
+                 external_brains: Dict[str, BrainParameters],
+                 training_seed: int):
         """
         :param model_path: Path to save the model.
         :param summaries_dir: Folder to save training summaries.
@@ -54,9 +61,11 @@ class TrainerController(object):
         self.train_model = train
         self.keep_checkpoints = keep_checkpoints
         self.trainers: Dict[str, Trainer] = {}
+        self.trainer_metrics: Dict[str, TrainerMetrics] = {}
         self.global_step = 0
         self.meta_curriculum = meta_curriculum
         self.seed = training_seed
+        self.training_start_time = time()
         np.random.seed(self.seed)
         tf.set_random_seed(self.seed)
 
@@ -92,17 +101,14 @@ class TrainerController(object):
                          'while the graph is generated.')
         self._save_model(steps)
 
-    def _win_handler(self, event):
+    def _write_training_metrics(self):
         """
-        This function gets triggered after ctrl-c or ctrl-break is pressed
-        under Windows platform.
+        Write all CSV metrics
+        :return:
         """
-        if event in (win32con.CTRL_C_EVENT, win32con.CTRL_BREAK_EVENT):
-            self._save_model_when_interrupted(self.global_step)
-            self._export_graph()
-            sys.exit()
-            return True
-        return False
+        for brain_name in self.trainers.keys():
+            if brain_name in self.trainer_metrics:
+                self.trainers[brain_name].write_training_metrics()
 
     def _export_graph(self):
         """
@@ -111,13 +117,12 @@ class TrainerController(object):
         for brain_name in self.trainers.keys():
             self.trainers[brain_name].export_model()
 
-    def initialize_trainers(self, trainer_config):
+    def initialize_trainers(self, trainer_config: Dict[str, Dict[str, str]]):
         """
         Initialization of the trainers
         :param trainer_config: The configurations of the trainers
         """
         trainer_parameters_dict = {}
-
         for brain_name in self.external_brains:
             trainer_parameters = trainer_config['default'].copy()
             trainer_parameters['summary_path'] = '{basedir}/{name}'.format(
@@ -152,7 +157,9 @@ class TrainerController(object):
                         .brains_to_curriculums[brain_name]
                         .min_lesson_length if self.meta_curriculum else 0,
                     trainer_parameters_dict[brain_name],
-                    self.train_model, self.load_model, self.seed, self.run_id)
+                    self.train_model, self.load_model, self.seed,
+                    self.run_id)
+                self.trainer_metrics[brain_name] = self.trainers[brain_name].trainer_metrics
             else:
                 raise UnityEnvironmentException('The trainer config contains '
                                                 'an unknown trainer type for '
@@ -171,7 +178,7 @@ class TrainerController(object):
                                             'permissions are set correctly.'
                                             .format(model_path))
 
-    def _reset_env(self, env):
+    def _reset_env(self, env: BaseUnityEnvironment):
         """Resets the environment.
 
         Returns:
@@ -183,7 +190,7 @@ class TrainerController(object):
         else:
             return env.reset()
 
-    def start_learning(self, env, trainer_config):
+    def start_learning(self, env: BaseUnityEnvironment, trainer_config):
         # TODO: Should be able to start learning at different lesson numbers
         # for each curriculum.
         if self.meta_curriculum is not None:
@@ -201,9 +208,6 @@ class TrainerController(object):
             for brain_name, trainer in self.trainers.items():
                 trainer.write_tensorboard_text('Hyperparameters',
                                                trainer.parameters)
-            if sys.platform.startswith('win'):
-                # Add the _win_handler function to the windows console's handler function list
-                win32api.SetConsoleCtrlHandler(self._win_handler, True)
         try:
             curr_info = self._reset_env(env)
             while any([t.get_step <= t.get_max_steps \
@@ -224,11 +228,11 @@ class TrainerController(object):
                 self._save_model_when_interrupted(steps=self.global_step)
             pass
         env.close()
-
         if self.train_model:
+            self._write_training_metrics()
             self._export_graph()
 
-    def take_step(self, env, curr_info: AllBrainInfo):
+    def take_step(self, env: BaseUnityEnvironment, curr_info: AllBrainInfo):
         if self.meta_curriculum:
             # Get the sizes of the reward buffers.
             reward_buff_sizes = {k: len(t.reward_buffer)
@@ -270,30 +274,35 @@ class TrainerController(object):
             take_action_text[brain_name] = action_info.text
             take_action_value[brain_name] = action_info.value
             take_action_outputs[brain_name] = action_info.outputs
+        time_start_step = time()
         new_info = env.step(
             vector_action=take_action_vector,
             memory=take_action_memories,
             text_action=take_action_text,
             value=take_action_value
         )
-
+        delta_time_step = time() - time_start_step
         for brain_name, trainer in self.trainers.items():
+            if brain_name in self.trainer_metrics:
+                self.trainer_metrics[brain_name].add_delta_step(delta_time_step)
             trainer.add_experiences(curr_info, new_info,
                                     take_action_outputs[brain_name])
             trainer.process_experiences(curr_info, new_info)
             if trainer.is_ready_update() and self.train_model \
                     and trainer.get_step <= trainer.get_max_steps:
                 # Perform gradient descent with experience buffer
+
                 trainer.update_policy()
             # Write training statistics to Tensorboard.
+            delta_train_start = time() - self.training_start_time
             if self.meta_curriculum is not None:
                 trainer.write_summary(
                     self.global_step,
-                    lesson_num=self.meta_curriculum
+                    delta_train_start, lesson_num=self.meta_curriculum
                         .brains_to_curriculums[brain_name]
                         .lesson_num)
             else:
-                trainer.write_summary(self.global_step)
+                trainer.write_summary(self.global_step, delta_train_start)
             if self.train_model \
                     and trainer.get_step <= trainer.get_max_steps:
                 trainer.increment_step_and_update_last_reward()
