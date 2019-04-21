@@ -30,7 +30,7 @@ setup(
 
     install_requires=[
         'mlagents_envs==0.8.1',
-        'tensorflow==2.0.0-alpha0',
+        'tensorflow-gpu==2.0.0-alpha0',
         'Pillow>=4.2.1',
         'matplotlib',
         'numpy>=1.13.3,<=1.16.1',
