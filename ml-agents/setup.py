@@ -42,7 +42,7 @@ setup(
         'grpcio>=1.11.0,<1.12.0',
         'pypiwin32==223;platform_system=="Windows"'],
 
-    python_requires=">=3.6,<3.7",
+    python_requires=">=3.6",
 
     entry_points={
         'console_scripts': [
